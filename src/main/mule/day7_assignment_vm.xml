@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:vm="http://www.mulesoft.org/schema/mule/vm" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:file="http://www.mulesoft.org/schema/mule/file"
+	xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/vm http://www.mulesoft.org/schema/mule/vm/current/mule-vm.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="729c5f2e-26f7-4d3b-9eab-bbfec467aae1" >
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<db:config name="Database_Config" doc:name="Database Config" doc:id="950c17ea-e4cd-4243-9a7c-9b7853d09061" >
+		<db:my-sql-connection host="localhost" port="3306" user="root" password="Mounika@1303" database="mule_DB" />
+	</db:config>
+	<file:config name="File_Config" doc:name="File Config" doc:id="4b269d90-52a8-4ce2-8f78-71d50e3a2e2a" >
+		<file:connection workingDir="/Users/mounikad/Desktop/mulesoft/day7_assignment_vm/Output" />
+	</file:config>
+	<vm:config name="VM_Config" doc:name="VM Config" doc:id="a5ea15c3-1936-4520-a7a2-08f7873f0871" >
+		<vm:connection />
+		<vm:queues >
+			<vm:queue queueName="Employee" />
+		</vm:queues>
+	</vm:config>
+	<vm:config name="VM_Config1" doc:name="VM Config" doc:id="8db29be8-6a78-4c9a-896c-a32b11ae8e80" >
+		<vm:connection />
+		<vm:queues >
+			<vm:queue queueName="Bad_Employee_Records" />
+		</vm:queues>
+	</vm:config>
+	<http:request-config name="HTTP_Request_configuration" doc:name="HTTP Request configuration" doc:id="cb95bd5c-54f7-4b4c-880d-50771e128d90" >
+		<http:request-connection host="localhost" port="8081" />
+	</http:request-config>
+	<flow name="day7_assignment_vmFlow" doc:id="7a662f66-2b65-4c3a-ba6d-86bf0b5f67f5" >
+		<http:listener doc:name="Listener" doc:id="e2919390-9bb6-4063-bfb8-e32852a2e572" config-ref="HTTP_Listener_config" path="/day7-assignment-vm"/>
+		<try doc:name="Try" doc:id="e57331e2-d9ce-4e88-8f5f-1379b965621d" >
+			<db:insert doc:name="Insert" doc:id="37201b7b-1879-46e2-8de0-47012cdd5e7b" config-ref="Database_Config">
+				<db:sql ><![CDATA[INSERT INTO mule_DB.employee(`id`,`name`,`location`) VALUES(:id,:name,:location)]]></db:sql>
+				<db:input-parameters ><![CDATA[#[{"id":payload.id,"name":payload.name,"location":payload.location}]]]></db:input-parameters>
+			</db:insert>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="86baea37-ca10-4575-a83d-1893139c7b81" type="ANY">
+					<file:write doc:name="Write" doc:id="a8291b06-5f78-4b66-abf4-4cc975519858" config-ref="File_Config" path="#['Pending_File' ++ (now() as String {format:'yyyy-MM-dd-hh-mm-ss.SSS'}) ++ '.json']"/>
+				</on-error-continue>
+			</error-handler>
+		</try>
+		<ee:transform doc:name="Transform Message" doc:id="3456dd84-7e2e-40ff-b77f-425139b99480" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="day7_assignment_vmFlow1" doc:id="e8a608ff-4bf6-4a3f-a994-a43e61d4c1d6" >
+		<file:listener doc:name="On New or Updated File" doc:id="f7ae9eb0-0799-4a5d-b0c0-da34986ba723" config-ref="File_Config" directory="/Users/mounikad/Desktop/mulesoft/day7_assignment_vm/Output" autoDelete="true" recursive="false">
+			<scheduling-strategy >
+				<fixed-frequency />
+			</scheduling-strategy>
+		</file:listener>
+		<logger level="INFO" doc:name="Logger" doc:id="1cc175bc-4802-4afc-8454-b18a034a1f07" message="#[payload]"/>
+		<choice doc:name="Choice" doc:id="8fa9cc3d-e96d-45b3-8d9a-9cfea0e676c7" >
+			<when expression="#[payload.id != 'x']">
+				<vm:publish queueName="Employee" doc:name="Publish" doc:id="490dac00-5b43-484a-b523-1877938b30ac" config-ref="VM_Config"/>
+				<logger level="INFO" doc:name="Logger" doc:id="33f53ee1-9a90-42b7-bef0-1c9ce7463e0f" message="#[payload]"/>
+			</when>
+			<otherwise >
+				<vm:publish doc:name="Publish" doc:id="ad2c07e6-6360-4334-b03b-6298c33c8c1f" config-ref="VM_Config1" queueName="Bad_Employee_Records"/>
+				<logger level="INFO" doc:name="Logger" doc:id="f2affa20-bfd4-456a-b185-69239ff49822" message="#[payload]"/>
+			</otherwise>
+		</choice>
+	</flow>
+	<flow name="day7_assignment_vmFlow2" doc:id="4de7ed82-b34e-4028-a735-48af4e32b88c" >
+		<scheduler doc:name="Scheduler" doc:id="21891d0a-4517-4811-9d9a-8ce9de7f2045" >
+			<scheduling-strategy >
+				<fixed-frequency frequency="5000"/>
+			</scheduling-strategy>
+		</scheduler>
+		<vm:consume queueName="Employee" doc:name="Consume" doc:id="8919e559-aa5f-45d2-8f5e-c1f705d0ed41" config-ref="VM_Config"/>
+		<logger level="INFO" doc:name="Logger" doc:id="391f8df9-7e07-43b6-b71a-f700ed53602e" message="#[payload]"/>
+		<http:request method="POST" doc:name="Request" doc:id="f4f95aaf-f0f5-4cb9-b306-cb8261950262" config-ref="HTTP_Request_configuration" path="/day7-assignment-vm"/>
+	</flow>
+</mule>
